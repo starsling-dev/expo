@@ -1,3 +1,7 @@
+import { initObserveIntegrationIfNeeded } from './observe';
+
+initObserveIntegrationIfNeeded();
+
 export * from './Image.types';
 export { Image } from './Image';
 export { ImageBackground } from './ImageBackground';

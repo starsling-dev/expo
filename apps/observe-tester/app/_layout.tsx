@@ -9,6 +9,9 @@ Observe.configure({
   dispatchInDebug: true,
   integrations: {
     'expo-router': true,
+    'expo-image': {
+      ratio: 1.5,
+    },
   },
 });
 
