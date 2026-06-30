@@ -1,0 +1,101 @@
+name: StarSling Check Packages Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: 'Baseline ref from expo/expo'
+        required: false
+        default: 'main'
+      patched_ref:
+        description: 'Patched ref from starsling-dev/expo'
+        required: false
+        default: 'starsling/ci-check-packages-cache-fix'
+
+jobs:
+  check-packages-benchmark:
+    name: check-packages-benchmark / ${{ matrix.variant }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, patched]
+    permissions:
+      contents: read
+    env:
+      # Match sdk.yml. The token is intentionally optional so forked benchmark
+      # runs do not depend on private upstream cache credentials.
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: expo
+      SKIP_SKIA_DOWNLOAD: '1'
+
+    steps:
+      - name: Checkout baseline
+        if: matrix.variant == 'baseline'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: expo/expo
+          ref: ${{ inputs.baseline_ref }}
+          fetch-depth: 100
+          persist-credentials: false
+
+      - name: Checkout patched
+        if: matrix.variant == 'patched'
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: starsling-dev/expo
+          ref: ${{ inputs.patched_ref }}
+          fetch-depth: 100
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: Verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.variant }}" = "patched" ]; then
+            pnpm install --ignore-scripts --frozen-lockfile 2>&1 | tee check-packages-benchmark.log
+          else
+            pnpm install --frozen-lockfile 2>&1 | tee check-packages-benchmark.log
+          fi
+
+      - name: Cache evidence summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          log=check-packages-benchmark.log
+          if [ ! -f "$log" ]; then
+            echo "No benchmark log was produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          misses=$(grep -c 'cache miss, executing' "$log" || true)
+          hits=$(grep -c 'cache hit' "$log" || true)
+          cached=$(grep 'Cached:' "$log" | tail -n 1 || true)
+
+          {
+            echo "## check-packages benchmark / ${{ matrix.variant }}"
+            echo
+            echo "| Metric | Value |"
+            echo "|---|---:|"
+            echo "| cache miss lines | $misses |"
+            echo "| cache hit lines | $hits |"
+            echo "| Turbo Cached summary | ${cached:-not found} |"
+          } >> "$GITHUB_STEP_SUMMARY"
