@@ -239,7 +239,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        # The dev-server Playwright suites dominate Windows runtime, so the slow
+        # `dev` directory is split across shards while the faster `prod` suite
+        # runs on its own. Sharding by directory (rather than a hand-maintained
+        # file list) keeps new test files covered automatically and reuses the
+        # same `--shard` mechanism as the Ubuntu Playwright job above.
+        include:
+          - name: dev-1
+            test-paths: e2e/playwright/dev
+            shard: 1/3
+          - name: dev-2
+            test-paths: e2e/playwright/dev
+            shard: 2/3
+          - name: dev-3
+            test-paths: e2e/playwright/dev
+            shard: 3/3
+          - name: prod
+            test-paths: e2e/playwright/prod
+            shard: 1/1
     env:
       # Change bun, npm, and pnpm caches to the much faster D:\ drive
       # See: https://github.com/twpayne/chezmoi/pull/4064
@@ -308,12 +325,12 @@ jobs:
 
       - name: 🧪 E2E (playwright) Test CLI
         working-directory: packages/@expo/cli
-        run: pnpm test:playwright --shard ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: pnpm test:playwright ${{ matrix.test-paths }} --shard ${{ matrix.shard }}
 
       - name: 🗄️ Upload playwright report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: playwright-report-windows-${{ matrix.shard }}
+          name: playwright-report-windows-${{ matrix.name }}
           path: packages/@expo/cli/playwright-report/
           retention-days: 30
